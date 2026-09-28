@@ -1,0 +1,168 @@
+'''This test is designed to shift bits while the arduino is monitoring the data and clocks'''
+
+
+from fusion_hat.pin import Pin, Mode
+import time
+
+SDI = Pin(17, mode=Mode.OUT)
+SRCLK = Pin(27, mode=Mode.OUT)
+RCLK = Pin(4, mode=Mode.OUT)
+
+SDI.low()
+SRCLK.low()
+RCLK.low()
+
+time.sleep(2)
+
+print("Shifting 10101010")
+
+bits = [1, 0, 1, 0, 1, 0, 1, 0]
+
+for bit in bits:
+
+    SDI.value(bit)
+    time.sleep(1)
+
+    SRCLK.high()
+    time.sleep(1)
+
+    SRCLK.low()
+    time.sleep(1)
+
+print("Latching")
+
+RCLK.high()
+time.sleep(1)
+
+RCLK.low()
+time.sleep(1)
+
+print("Done")
+
+SDI.low()
+SRCLK.low()
+RCLK.low()
+
+SDI.close()
+SRCLK.close()
+RCLK.close()
+
+'''
+FIRST ARDUINO PROGRAM
+Arduino signal monitor started0
+TA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+TA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+Arduino signal monitor started
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=0
+DATA=1  CLOCK=1  LATCH=1
+DATA=1  CLOCK=0  LATCH=1
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+DATA=1  CLOCK=0  LATCH=0
+
+SECOND ARDUINO PROGRAM (TEST 73)
+Pi 595 CLOCK MONITOR
+==== clock edges...
+
+Pi 595 CLOCK MONITOR
+====================
+Waiting for clock edges...
+Clock edges detected: 1
+  Edge 1: DATA=1  LATCH=0
+Clock edges detected: 2
+  Edge 2: DATA=1  LATCH=0
+Clock edges detected: 3
+  Edge 3: DATA=1  LATCH=0
+Clock edges detected: 4
+  Edge 4: DATA=1  LATCH=0
+Clock edges detected: 5
+  Edge 5: DATA=1  LATCH=0
+Clock edges detected: 6
+  Edge 6: DATA=1  LATCH=0
+Clock edges detected: 7
+  Edge 7: DATA=1  LATCH=0
+Clock edges detected: 8
+  Edge 8: DATA=1  LATCH=0
+Clock edges detected: 9
+  Edge 9: DATA=1  LATCH=1
+
+'''
