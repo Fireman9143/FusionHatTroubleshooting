@@ -9,6 +9,7 @@ capture quickly after the start pulse and (2) decoding tolerantly.
 Usage:
     python dht11_edges.py bench              # 30 raw reads + statistics
     python dht11_edges.py bench --count 100
+    python dht11_edges.py bench --dump       # also print the raw edges of failed reads
     python dht11_edges.py run                # continuous; retries bad frames
     python dht11_edges.py selftest           # decoder test, no hardware needed
 
@@ -19,10 +20,11 @@ import argparse
 import gc
 import random
 import sys
+import textwrap
 import threading
 import time
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 try:
@@ -37,6 +39,7 @@ PIN = 5                  # BCM GPIO connected to the DHT11 data line
 START_LOW_S = 0.020      # host start pulse (datasheet minimum is 18 ms)
 FRAME_WINDOW_S = 0.010   # a frame lasts ~5 ms on the wire; listen for 10 ms
 MIN_PERIOD_S = 1.1       # DHT11 needs >= 1 s between reads
+LATE_ARM_US = 250.0      # first data bit starts ~240 us after the line is released
 
 # DHT11 high-pulse widths in microseconds: response ~80, bit 0 ~27, bit 1 ~70
 BIT_THRESHOLD_US = 48.0              # midpoint between 27 and 70
@@ -112,6 +115,8 @@ class Result:
     pulses: int = 0
     response: bool = False
     gap_us: float = 0.0              # release -> edge capture armed
+    max_edge_gap_us: float = 0.0     # longest pause between captured edges
+    raw: list = field(default_factory=list)   # [(level, us since previous edge), ...]
     elapsed_ms: float = 0.0
 
     @property
@@ -182,8 +187,12 @@ class Dht11:
             edges = list(self._edges)
 
         widths = high_pulse_widths_us(edges)
+        intervals = [(b[0] - a[0]) / 1000.0 for a, b in zip(edges, edges[1:])]
         result = Result(edges=len(edges), pulses=len(widths),
-                        response=response_seen(widths), gap_us=gap_us)
+                        response=response_seen(widths), gap_us=gap_us,
+                        max_edge_gap_us=max(intervals, default=0.0),
+                        raw=[(lvl, 0.0 if i == 0 else intervals[i - 1])
+                             for i, (_, lvl) in enumerate(edges)])
         if not edges:
             result.error, result.detail = "no_edges", "sensor never answered"
         else:
@@ -191,6 +200,9 @@ class Dht11:
                 result.humidity, result.temperature = decode_widths(widths)
             except DecodeError as exc:
                 result.error, result.detail = exc.kind, exc.detail
+                if exc.kind == "few_pulses" and gap_us > LATE_ARM_US:
+                    result.error = "late_arm"
+                    result.detail = f"armed {gap_us:.0f} us after release; {exc.detail}"
         result.elapsed_ms = (now_ns() - t_start) / 1e6
         return result
 
@@ -219,10 +231,21 @@ def describe(n, total, r):
             f"edges {r.edges:2d} | pulses {r.pulses:2d} | ")
     if r.ok:
         return line + f"H={r.humidity:.0f}%  T={r.temperature:.1f} C"
-    return line + f"INVALID ({r.error}: {r.detail})"
+    return line + f"INVALID ({r.error}: {r.detail}; longest edge gap {r.max_edge_gap_us:.0f} us)"
 
 
-def bench(sensor, attempts):
+def format_raw(raw):
+    """R/F = new level, +N = microseconds since the previous edge, * = level repeated."""
+    tokens, prev = [], None
+    for level, interval in raw:
+        repeat = "*" if prev is not None and level == prev else ""
+        tokens.append(f"{'R' if level else 'F'}+{interval:.0f}{repeat}")
+        prev = level
+    return textwrap.fill(" ".join(tokens), width=100,
+                         initial_indent="    ", subsequent_indent="    ")
+
+
+def bench(sensor, attempts, dump=False):
     print(f"Benchmark: {attempts} raw reads on BCM GPIO{sensor.pin}\n")
     results = []
     next_start = time.monotonic()
@@ -235,6 +258,8 @@ def bench(sensor, attempts):
         next_start = started + MIN_PERIOD_S
         results.append(r)
         print(describe(n, attempts, r))
+        if dump and not r.ok and r.raw:
+            print(format_raw(r.raw))
     summarize(results)
 
 
@@ -265,16 +290,21 @@ def summarize(results):
         print(f"Humidity:      {min(hs):.0f}-{max(hs):.0f} %")
         print(f"Temperature:   {min(ts):.1f}-{max(ts):.1f} C")
 
-    # Hints, based on which failure dominates.
-    if failures:
-        top = failures.most_common(1)[0][0]
-        if top in ("few_pulses", "no_edges"):
-            print("\nHint: most failures are missing pulses, which usually means the capture is "
-                  "armed too late (see the arm gap). Wiring the data line to a second GPIO "
-                  "(one drives the start pulse, the other is permanently monitored) removes the gap.")
-        elif top in ("bad_width", "checksum"):
-            print("\nHint: pulses arrived but were distorted. Check the pull-up resistor, wire "
-                  "length and connections, and that the sensor has a stable supply.")
+    # Hints, based on which failures occurred.
+    if failures.get("late_arm"):
+        worst = max(r.gap_us for r in results)
+        print(f"\nHint: {failures['late_arm']} read(s) stalled between releasing the line and arming "
+              f"the capture (worst {worst:.0f} us; the budget is ~240 us). Stalls of milliseconds "
+              "usually mean the CPU was busy with something else. Close other programs or try "
+              "real-time priority. Wiring the data line to a second GPIO (one drives the start "
+              "pulse, the other is permanently monitored) removes this window entirely.")
+    if failures.get("few_pulses") or failures.get("no_edges"):
+        print("\nHint: some frames lost pulses even though the arm gap was short. Check "
+              "'longest edge gap' on those lines: under ~150 us means the frame was intact but "
+              "started late; a larger value means edges were lost mid-frame.")
+    if failures.get("bad_width") or failures.get("checksum"):
+        print("\nHint: pulses arrived but were distorted. Check the pull-up resistor, wire "
+              "length and connections, and that the sensor has a stable supply.")
 
 
 def run(sensor, retries=3):
@@ -381,7 +411,8 @@ def main():
     parser.add_argument("mode", nargs="?", default="bench", choices=["bench", "run", "selftest"])
     parser.add_argument("--chip", type=int, default=CHIP)
     parser.add_argument("--pin", type=int, default=PIN)
-    parser.add_argument("--count", type=int, default=30)
+    parser.add_argument("--count", type=int, default=100)
+    parser.add_argument("--dump", action="store_true", help="print raw edges of failed reads")
     args = parser.parse_args()
 
     if args.mode == "selftest":
@@ -391,7 +422,7 @@ def main():
 
     sensor = Dht11(args.chip, args.pin)
     try:
-        bench(sensor, args.count) if args.mode == "bench" else run(sensor)
+        bench(sensor, args.count, args.dump) if args.mode == "bench" else run(sensor)
     except KeyboardInterrupt:
         print("\nStopped.")
     finally:
